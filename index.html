@@ -1,0 +1,143 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Batch Placeholder Image Generator</title>
+  <style>
+    body { 
+      font-family: sans-serif; 
+      max-width: 600px; 
+      margin: 2em auto; 
+      text-align: center; 
+    }
+    .drop-zone {
+      border: 2px dashed #ccc;
+      padding: 2em;
+      margin: 1em 0;
+      cursor: pointer;
+    }
+    .drop-zone.dragover { background: #f0f0f0 }
+    ul { text-align: left }
+  </style>
+</head>
+<body>
+
+  <h1>Placeholder Image Generator</h1>
+  <p>Select or drag &amp; drop your images below:</p>
+
+  <div class="drop-zone" id="dropZone">
+    Drop images here or 
+    <input type="file" id="fileInput" multiple accept="image/*">
+  </div>
+
+  <p>
+    Fill with:
+    <label><input type="radio" name="fill" value="transparent" checked> Transparent (PNG)</label>
+    <label><input type="radio" name="fill" value="white"> White</label>
+  </p>
+
+  <button id="processBtn">Generate Placeholders & ZIP</button>
+
+  <h3>Log / Download</h3>
+  <ul id="log"></ul>
+
+  <!-- JSZip CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+          integrity="sha512-...==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const processBtn = document.getElementById('processBtn');
+    const logList = document.getElementById('log');
+
+    let files = [];
+
+    // handle drag & drop
+    ['dragenter','dragover'].forEach(evt =>
+      dropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      })
+    );
+    ['dragleave','drop'].forEach(evt =>
+      dropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+      })
+    );
+    dropZone.addEventListener('drop', e => {
+      files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+      log(`Dropped ${files.length} image(s).`);
+    });
+
+    // handle file input
+    fileInput.addEventListener('change', e => {
+      files = Array.from(e.target.files);
+      log(`Selected ${files.length} image(s).`);
+    });
+
+    // log helper
+    function log(msg) {
+      const li = document.createElement('li');
+      li.textContent = msg;
+      logList.appendChild(li);
+    }
+
+    processBtn.addEventListener('click', async () => {
+      if (!files.length) return alert('Please select or drop at least one image.');
+
+      const fillMode = document.querySelector('input[name="fill"]:checked').value;
+      const zip = new JSZip();
+
+      for (const file of files) {
+        await new Promise(resolve => {
+          const img = new Image();
+          img.onload = () => {
+            const w = img.naturalWidth;
+            const h = img.naturalHeight;
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+
+            if (fillMode === 'white') {
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, w, h);
+            }
+            // if transparent, leave canvas blank
+
+            // convert to appropriate format
+            const ext = file.name.split('.').pop().toLowerCase();
+            const mime = ext === 'jpg' || ext === 'jpeg'
+              ? 'image/jpeg'
+              : 'image/png';
+
+            canvas.toBlob(blob => {
+              zip.file(file.name, blob);
+              log(`Processed: ${file.name}`);
+              resolve();
+            }, mime);
+          };
+          img.onerror = () => {
+            log(`⚠️ Failed to load ${file.name}`);
+            resolve();
+          };
+          img.src = URL.createObjectURL(file);
+        });
+      }
+
+      log('Generating ZIP…');
+      const content = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(content);
+      a.download = 'placeholders.zip';
+      a.textContent = '⬇️ Download placeholders.zip';
+      const li = document.createElement('li');
+      li.appendChild(a);
+      logList.appendChild(li);
+    });
+  </script>
+</body>
+</html>
